@@ -120,7 +120,7 @@ def get_from_list(list_name):
     ctx_auth = AuthenticationContext(URL)
     if ctx_auth.acquire_token_for_user(USERNAME, PASSWORD):
         ctx = ClientContext(URL, ctx_auth)
-        list_object = ctx.web.lists.get_by_title(list_name)
+        list_object = ctx.web.lists.get_by_id(list_name)
         items = list_object.get_items()
         ctx.load(items)
         ctx.execute_query()
