@@ -8,7 +8,7 @@ from office365.runtime.utilities.http_method import HttpMethod
 from office365.runtime.utilities.request_options import RequestOptions
 from office365.sharepoint.client_context import ClientContext
 
-from flask import Flask, request, Response
+from flask import Flask, request, Response, abort
 
 # Url for sharepoint site we woant to work on
 URL = os.environ.get('SP_URL')
@@ -19,6 +19,8 @@ PASSWORD = os.environ.get('SP_PASSWORD')
 # Key for entity attribute containing name of list we want to work on
 LIST_NAME = os.environ.get('SP_LIST_NAME', 'ListName')
 # Key for entity attribute containing name of list item
+# can be obtained by  sending GET to
+# https://<tenant>.sharepoint.com/sites/<site>/_api/web/lists/GetByTitle('<list name>')/ListItemEntityTypeFullName
 LIST_ITEM_NAME = os.environ.get('SP_LIST_ITEM_NAME', 'ListItemEntityTypeFullName')
 LIST_SIZE = int(os.environ.get('SP_LIST_SIZE', '100'))
 
@@ -100,7 +102,7 @@ def send_to_list():
                                         'message') and ie.message == "Item does not exist. It may have been deleted by another user."):
                             existing_item = None
                         else:
-                            raise
+                            raise Exception from ie
 
                 if not existing_item:
                     logging.info("Creating new item")
@@ -108,13 +110,16 @@ def send_to_list():
                     ctx.execute_query()
                 else:
                     logging.info("Existing item found")
-                    update_result = update_list_item(ctx, entity[LIST_NAME], entity.get('ID'), values_to_send)
-                    update_result.raise_for_status()
+                    if entity.get('SHOULD_DELETE') is not None and bool(entity.get('SHOULD_DELETE')):
+                        response = delete_list_item(ctx, entity[LIST_NAME], entity.get('ID'))
+                    else:
+                        response = update_list_item(ctx, entity[LIST_NAME], entity.get('ID'), values_to_send)
+                    response.raise_for_status()
 
             except Exception as e:
                 error_message = f"An exception occurred during processing of an entity: {e} ({json.dumps(entity)}"
                 logging.error(error_message)
-                raise Exception(error_message)
+                raise Exception(error_message) from e
 
     post_entities(request_entities)
     return Response(status=200, response="{'status': 'success'}", mimetype='application/json')
@@ -144,6 +149,8 @@ def get_from_list(list_name):
         ctx.load(items)
         ctx.execute_query()
         return Response(generate(items), mimetype='application/json')
+    else:
+        abort(500)
 
 
 @APP.route('/get-site-users', methods=['GET'])
@@ -189,6 +196,24 @@ def update_list_item(context, list_title, item_id, values_to_send):
     options.method = HttpMethod.Post
     result = request.execute_request_direct(options)
     return result
+
+
+def delete_list_item(context, list_title, item_id):
+    """
+    Deletes item with given id in given list
+    :param context: auth context
+    :param list_title: name of list
+    :param item_id:
+    :return: requests/response object
+    """
+    req = ClientRequest(context)
+    options = RequestOptions(f"{URL}/_api/web/lists/getbyTitle('{list_title}')/items({item_id})")
+    options.set_header('Accept', 'application/json; odata=nometadata')
+    options.set_header('IF-MATCH', '*')
+    options.set_header('X-HTTP-Method', 'DELETE')
+    options.method = HttpMethod.Post
+    res = req.execute_request_direct(options)
+    return res
 
 
 if __name__ == '__main__':

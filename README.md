@@ -41,7 +41,8 @@ pipe setup
         ["add", "::ListItemEntityTypeFullName", "SP.Data.<SharePoint List Item>"],
         ["add", "::Keys",
           ["list", "Key1", "Key2"] <-- which attributes are we gonna send (we don't need to send all, SP will return error on unrecognized fields)
-        ]
+        ],
+        ["add", "::SHOULD_DELETE", true] <-- if want to delete an entity instead of updating it
       ]
     }
   },
